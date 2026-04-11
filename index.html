@@ -13,7 +13,7 @@
         @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
         body { font-family: 'Cairo', sans-serif; background-color: #050505; color: white; }
         .glass { background: rgba(15, 15, 15, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); }
-        .custom-shadow { shadow-lg shadow-blue-600/20 }
+        .custom-shadow { box-shadow: 0 10px 30px -10px rgba(37, 99, 235, 0.2); }
     </style>
 </head>
 <body>
@@ -24,7 +24,7 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // إعدادات Firebase
+        // إعدادات Firebase الخاصة بك يا عبدالله
         const firebaseConfig = {
             apiKey: "AIzaSyAY_d2xN4LttgidRoHpHa_jH1NZkYGxOHQ",
             authDomain: "complaints-archive.firebaseapp.com",
@@ -36,10 +36,11 @@
         };
 
         const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
         window.fb = { 
-            auth: getAuth(app), 
-            db: getFirestore(app),
-            signInAnonymously, onAuthStateChanged, collection, addDoc, onSnapshot, doc, deleteDoc 
+            auth, db, signInAnonymously, onAuthStateChanged, collection, addDoc, onSnapshot, doc, deleteDoc 
         };
     </script>
 
@@ -59,23 +60,36 @@
             const [searchTerm, setSearchTerm] = useState("");
             const [copiedId, setCopiedId] = useState(null);
 
-            // إعدادات Cloudinary
             const CLOUD_NAME = "dcgw0c0nv";
             const UPLOAD_PRESET = "Archive_Acc_1";
             const ADMIN_PASS = "123456"; 
+            const appId = "marvel-archive-system";
 
+            // 1. تفعيل الدخول المجهول عند تشغيل الموقع
             useEffect(() => {
-                signInAnonymously(auth).catch(console.error);
-                onAuthStateChanged(auth, setUser);
-                setTimeout(() => lucide.createIcons(), 500);
+                const startAuth = async () => {
+                    try {
+                        await signInAnonymously(auth);
+                    } catch (err) {
+                        console.error("خطأ: تأكد من تفعيل Anonymous Auth في Firebase", err);
+                    }
+                };
+                startAuth();
+                const unsub = onAuthStateChanged(auth, setUser);
+                return () => unsub();
             }, []);
 
+            // 2. جلب البيانات باستخدام المسار الصارم (Rule 1)
             useEffect(() => {
                 if (!user) return;
-                const unsub = onSnapshot(collection(db, 'complaints'), (snap) => {
+                const path = collection(db, 'artifacts', appId, 'public', 'data', 'complaints');
+                
+                const unsub = onSnapshot(path, (snap) => {
                     const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                     setComplaints(list.sort((a,b) => b.at - a.at));
                     setTimeout(() => lucide.createIcons(), 200);
+                }, (err) => {
+                    console.error("Firestore Error: تأكد من قواعد البيانات (Rules)", err);
                 });
                 return unsub;
             }, [user]);
@@ -86,10 +100,11 @@
                 const title = e.target.elements.title.value;
                 const desc = e.target.elements.desc.value;
 
-                if (!file || !title) return;
+                if (!file || !title || !user) return;
                 setUploading(true);
 
                 try {
+                    // المرحلة الأولى: الرفع إلى Cloudinary
                     const formData = new FormData();
                     formData.append('file', file);
                     formData.append('upload_preset', UPLOAD_PRESET);
@@ -97,27 +112,34 @@
                     const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`, {
                         method: 'POST', body: formData
                     });
+                    
+                    if (!res.ok) throw new Error("فشل الرفع إلى Cloudinary. تأكد من إعدادات الـ Preset.");
+                    
                     const resJson = await res.json();
 
-                    await addDoc(collection(db, 'complaints'), {
+                    // المرحلة الثانية: الحفظ في Firestore بالمسار الصحيح (Rule 1)
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'complaints'), {
                         title: `تذكرة: ${title}`,
                         desc,
                         url: resJson.secure_url,
                         type: file.type,
-                        at: Date.now()
+                        at: Date.now(),
+                        uid: user.uid
                     });
 
                     setIsModalOpen(false);
-                    alert("تم إيداع الدليل بنجاح.");
-                } catch (e) { alert("حدث خطأ أثناء عملية الرفع."); }
+                    alert("تم إيداع الدليل بنجاح في الأرشيف.");
+                } catch (e) { 
+                    alert(`خطأ: ${e.message || "تأكد من تفعيل الدخول المجهول وقواعد البيانات في Firebase."}`);
+                    console.error(e);
+                }
                 setUploading(false);
             };
 
-            const filtered = complaints.filter(c => c.title.includes(searchTerm));
+            const filtered = complaints.filter(c => c.title.toLowerCase().includes(searchTerm.toLowerCase()));
 
             return (
                 <div className="min-h-screen flex flex-col">
-                    {/* Navbar */}
                     <nav className="h-20 glass sticky top-0 z-50 px-6 flex items-center justify-between border-b border-white/5">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/30 text-white">
@@ -148,7 +170,7 @@
                                     {filtered.map(c => (
                                         <div key={c.id} className="glass rounded-[2rem] overflow-hidden group border border-white/5 hover:border-blue-500/30 transition-all duration-300">
                                             <div className="aspect-video bg-black relative">
-                                                {c.type.includes('video') ? <video src={c.url} controls className="w-full h-full object-cover" /> : <img src={c.url} className="w-full h-full object-cover" />}
+                                                {c.type && c.type.includes('video') ? <video src={c.url} controls className="w-full h-full object-cover" /> : <img src={c.url} className="w-full h-full object-cover" />}
                                             </div>
                                             <div className="p-6">
                                                 <h3 className="font-bold text-lg mb-1 truncate text-white">{c.title}</h3>
@@ -159,7 +181,7 @@
                                                             className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${copiedId === c.id ? 'bg-green-600 text-white' : 'bg-blue-600/10 text-blue-400 hover:bg-blue-600 hover:text-white'}`}>
                                                         {copiedId === c.id ? 'تم النسخ' : 'نسخ الرابط'}
                                                     </button>
-                                                    <button onClick={async () => confirm('تأكيد حذف الملف من الأرشيف؟') && await deleteDoc(doc(db, 'complaints', c.id))} className="p-3 bg-red-900/10 text-red-500 rounded-xl hover:bg-red-600 hover:text-white transition-all"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
+                                                    <button onClick={async () => confirm('تأكيد حذف الملف من الأرشيف؟') && await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'complaints', c.id))} className="p-3 bg-red-900/10 text-red-500 rounded-xl hover:bg-red-600 hover:text-white transition-all"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
                                                 </div>
                                             </div>
                                         </div>
@@ -199,7 +221,6 @@
                         </div>
                     )}
 
-                    {/* Upload Modal */}
                     {isModalOpen && (
                         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-4">
                             <div className="glass p-8 rounded-[3rem] w-full max-w-xl relative overflow-hidden">
