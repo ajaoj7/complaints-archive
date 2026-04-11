@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>أرشيف الشكاوي - عبدالله</title>
+    <title>Marvel Archive System</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -13,6 +13,7 @@
         @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
         body { font-family: 'Cairo', sans-serif; background-color: #050505; color: white; }
         .glass { background: rgba(15, 15, 15, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); }
+        .custom-shadow { shadow-lg shadow-blue-600/20 }
     </style>
 </head>
 <body>
@@ -23,7 +24,7 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // إعدادات Firebase الخاصة بعبدالله
+        // إعدادات Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyAY_d2xN4LttgidRoHpHa_jH1NZkYGxOHQ",
             authDomain: "complaints-archive.firebaseapp.com",
@@ -58,7 +59,7 @@
             const [searchTerm, setSearchTerm] = useState("");
             const [copiedId, setCopiedId] = useState(null);
 
-            // إعدادات Cloudinary الخاصة بعبدالله
+            // إعدادات Cloudinary
             const CLOUD_NAME = "dcgw0c0nv";
             const UPLOAD_PRESET = "Archive_Acc_1";
             const ADMIN_PASS = "123456"; 
@@ -99,23 +100,30 @@
                     const resJson = await res.json();
 
                     await addDoc(collection(db, 'complaints'), {
-                        title, desc, url: resJson.secure_url, type: file.type, at: Date.now()
+                        title: `تذكرة: ${title}`,
+                        desc,
+                        url: resJson.secure_url,
+                        type: file.type,
+                        at: Date.now()
                     });
 
                     setIsModalOpen(false);
-                    alert("تم الرفع بنجاح!");
-                } catch (e) { alert("خطأ في الرفع! تأكد من إعدادات Cloudinary"); }
+                    alert("تم إيداع الدليل بنجاح.");
+                } catch (e) { alert("حدث خطأ أثناء عملية الرفع."); }
                 setUploading(false);
             };
 
             const filtered = complaints.filter(c => c.title.includes(searchTerm));
 
             return (
-                <div className="min-h-screen">
+                <div className="min-h-screen flex flex-col">
+                    {/* Navbar */}
                     <nav className="h-20 glass sticky top-0 z-50 px-6 flex items-center justify-between border-b border-white/5">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/30"><i data-lucide="shield"></i></div>
-                            <h1 className="text-xl font-black">أرشيف جيمي <span className="text-xs text-blue-500 mr-2">{isAdmin ? 'ADMIN' : 'USER'}</span></h1>
+                            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/30 text-white">
+                                <i data-lucide="database"></i>
+                            </div>
+                            <h1 className="text-xl font-black tracking-tight uppercase">Marvel Archive System</h1>
                         </div>
                         <div className="flex gap-2">
                             {!isAdmin ? (
@@ -124,30 +132,34 @@
                                 <button onClick={() => setIsAdmin(false)} className="p-2 text-red-500"><i data-lucide="log-out"></i></button>
                             )}
                             <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 px-6 py-2 rounded-xl font-bold hover:bg-blue-500 transition-all shadow-lg flex items-center gap-2">
-                                <i data-lucide="plus"></i> رفع بلاغ
+                                <i data-lucide="plus"></i> <span className="hidden sm:inline">إيداع دليل</span>
                             </button>
                         </div>
                     </nav>
 
-                    <main className="max-w-7xl mx-auto px-6 py-10">
+                    <main className="max-w-7xl mx-auto w-full px-6 py-10 flex-grow">
                         {isAdmin ? (
                             <>
-                                <input className="w-full mb-8 bg-white/5 border border-white/5 p-4 rounded-2xl outline-none focus:border-blue-600" placeholder="بحث في الأرشيف..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                <div className="mb-10 relative">
+                                    <i data-lucide="search" className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 w-5 h-5"></i>
+                                    <input className="w-full bg-white/5 border border-white/5 pr-12 pl-6 py-4 rounded-2xl outline-none focus:border-blue-600 transition-all" placeholder="بحث بواسطة رقم التذكرة..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                                     {filtered.map(c => (
-                                        <div key={c.id} className="glass rounded-[2rem] overflow-hidden group hover:border-blue-500/30 transition-all">
+                                        <div key={c.id} className="glass rounded-[2rem] overflow-hidden group border border-white/5 hover:border-blue-500/30 transition-all duration-300">
                                             <div className="aspect-video bg-black relative">
                                                 {c.type.includes('video') ? <video src={c.url} controls className="w-full h-full object-cover" /> : <img src={c.url} className="w-full h-full object-cover" />}
                                             </div>
                                             <div className="p-6">
                                                 <h3 className="font-bold text-lg mb-1 truncate text-white">{c.title}</h3>
                                                 <p className="text-slate-500 text-[10px] mb-4">{new Date(c.at).toLocaleString('ar-EG')}</p>
+                                                <p className="text-slate-400 text-sm mb-6 line-clamp-2 h-10">{c.desc || "لا توجد تفاصيل إضافية."}</p>
                                                 <div className="flex gap-2">
                                                     <button onClick={() => { navigator.clipboard.writeText(c.url); setCopiedId(c.id); setTimeout(() => setCopiedId(null), 2000); }} 
-                                                            className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${copiedId === c.id ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-500'}`}>
-                                                        {copiedId === c.id ? 'تم النسخ' : 'نسخ لديسكورد'}
+                                                            className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${copiedId === c.id ? 'bg-green-600 text-white' : 'bg-blue-600/10 text-blue-400 hover:bg-blue-600 hover:text-white'}`}>
+                                                        {copiedId === c.id ? 'تم النسخ' : 'نسخ الرابط'}
                                                     </button>
-                                                    <button onClick={async () => confirm('حذف؟') && await deleteDoc(doc(db, 'complaints', c.id))} className="p-3 bg-red-900/10 text-red-500 rounded-xl hover:bg-red-600 hover:text-white transition-all"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
+                                                    <button onClick={async () => confirm('تأكيد حذف الملف من الأرشيف؟') && await deleteDoc(doc(db, 'complaints', c.id))} className="p-3 bg-red-900/10 text-red-500 rounded-xl hover:bg-red-600 hover:text-white transition-all"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
                                                 </div>
                                             </div>
                                         </div>
@@ -155,37 +167,59 @@
                                 </div>
                             </>
                         ) : (
-                            <div className="text-center py-20">
-                                <div className="w-24 h-24 bg-blue-600/10 rounded-full flex items-center justify-center mx-auto mb-8 border border-blue-500/10 shadow-inner"><i data-lucide="upload-cloud" className="w-12 h-12 text-blue-500"></i></div>
-                                <h2 className="text-4xl font-black mb-4 tracking-tight">نظام إيداع الأدلة</h2>
-                                <p className="text-slate-500 mb-10 text-lg leading-relaxed">ارفع دليلك هنا، وسيتم حفظه للأدمن بشكل آمن ودائم <br/> مجاني 100% ولا يحذف الفيديوهات.</p>
-                                <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 px-12 py-5 rounded-[2.5rem] font-black text-xl shadow-2xl active:scale-95 transition-all shadow-blue-600/20">ابدأ الرفع الآن</button>
+                            <div className="text-center py-20 max-w-2xl mx-auto">
+                                <div className="w-24 h-24 bg-blue-600/10 rounded-full flex items-center justify-center mx-auto mb-8 border border-blue-500/10 shadow-inner text-blue-500">
+                                    <i data-lucide="upload-cloud" className="w-12 h-12"></i>
+                                </div>
+                                <h2 className="text-4xl font-black mb-4 tracking-tight">نظام الأرشفة المركزي</h2>
+                                <p className="text-slate-500 mb-10 text-lg leading-relaxed">
+                                    نظام مخصص لتوثيق وحفظ الأدلة والشكاوي بشكل رسمي.
+                                    <br />
+                                    سيتم إرسال الملفات مباشرة إلى قاعدة بيانات الإدارة فور الرفع.
+                                </p>
+                                <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 px-12 py-5 rounded-[2.5rem] font-black text-xl shadow-2xl active:scale-95 transition-all shadow-blue-600/20">ابدأ عملية الإيداع</button>
                             </div>
                         )}
                     </main>
 
+                    <footer className="py-10 text-center text-slate-700 text-[10px] border-t border-white/5 uppercase tracking-[0.2em]">
+                        Marvel Archive System © 2026
+                    </footer>
+
+                    {/* Admin Login Modal */}
                     {showAdminLogin && (
-                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md">
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md px-4">
                             <div className="glass p-10 rounded-[2.5rem] w-full max-w-sm text-center">
-                                <h2 className="text-xl font-bold mb-6 text-white">دخول الإدارة</h2>
+                                <i data-lucide="shield" className="mx-auto mb-4 text-blue-500"></i>
+                                <h2 className="text-xl font-bold mb-6 text-white">دخول النظام</h2>
                                 <input type="password" autoFocus className="w-full bg-white/5 rounded-2xl p-4 text-center text-2xl tracking-[0.5em] outline-none border border-white/5 focus:border-blue-600" placeholder="******" value={passInput} onChange={e => setPassInput(e.target.value)} />
-                                <button onClick={() => { if(passInput === ADMIN_PASS) { setIsAdmin(true); setShowAdminLogin(false); setPassInput(""); } else alert('خطأ!') }} className="w-full bg-blue-600 py-4 rounded-2xl mt-4 font-bold shadow-lg transition-all hover:bg-blue-500">دخول</button>
-                                <button onClick={() => setShowAdminLogin(false)} className="mt-4 text-slate-500 text-sm">إلغاء</button>
+                                <button onClick={() => { if(passInput === ADMIN_PASS) { setIsAdmin(true); setShowAdminLogin(false); setPassInput(""); } else alert('رمز الدخول غير صحيح.') }} className="w-full bg-blue-600 py-4 rounded-2xl mt-4 font-bold shadow-lg transition-all hover:bg-blue-500">تحقق</button>
+                                <button onClick={() => setShowAdminLogin(false)} className="mt-4 text-slate-500 text-sm hover:text-white">إلغاء</button>
                             </div>
                         </div>
                     )}
 
+                    {/* Upload Modal */}
                     {isModalOpen && (
                         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-4">
                             <div className="glass p-8 rounded-[3rem] w-full max-w-xl relative overflow-hidden">
-                                <button onClick={() => setIsModalOpen(false)} className="absolute top-8 left-8 text-slate-500"><i data-lucide="x"></i></button>
-                                <h2 className="text-2xl font-black mb-8 text-white tracking-tight">رفع دليل جديد</h2>
+                                <button onClick={() => setIsModalOpen(false)} className="absolute top-8 left-8 text-slate-500 hover:text-white transition-colors"><i data-lucide="x"></i></button>
+                                <h2 className="text-2xl font-black mb-8 text-white tracking-tight">إيداع دليل جديد</h2>
                                 <form onSubmit={handleUpload} className="space-y-6">
-                                    <input name="title" required className="w-full bg-white/5 rounded-2xl p-4 outline-none border border-white/5 focus:border-blue-600 text-white" placeholder="عنوان الشكوى (مثال: تخريب روم)" />
-                                    <textarea name="desc" className="w-full bg-white/5 rounded-2xl p-4 outline-none border border-white/5 focus:border-blue-600 resize-none text-white" placeholder="تفاصيل إضافية..." rows="2"></textarea>
-                                    <input name="file" type="file" required className="w-full bg-white/5 rounded-2xl p-4 border border-white/5 border-dashed text-slate-400" accept="video/*,image/*" />
-                                    <button disabled={uploading} className="w-full bg-blue-600 py-5 rounded-[1.5rem] font-black text-lg disabled:opacity-30 flex items-center justify-center gap-3 transition-all active:scale-95">
-                                        {uploading ? <div className="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin"></div> : <><i data-lucide="shield-check"></i> إرسال للأرشيف</>}
+                                    <div>
+                                        <label className="text-[10px] text-slate-500 mr-2 uppercase font-bold tracking-widest block mb-2">رقم التذكرة</label>
+                                        <input name="title" required className="w-full bg-white/5 rounded-2xl p-4 outline-none border border-white/5 focus:border-blue-600 text-white" placeholder="رقم تذكرة الشكوى" />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-slate-500 mr-2 uppercase font-bold tracking-widest block mb-2">تفاصيل إضافية (اختياري)</label>
+                                        <textarea name="desc" className="w-full bg-white/5 rounded-2xl p-4 outline-none border border-white/5 focus:border-blue-600 resize-none text-white" placeholder="أضف أي تفاصيل أخرى هنا (اختياري)" rows="2"></textarea>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-slate-500 mr-2 uppercase font-bold tracking-widest block mb-2">الملف المطلوب أرشفته</label>
+                                        <input name="file" type="file" required className="w-full bg-white/5 rounded-2xl p-4 border border-white/5 border-dashed text-slate-400 text-sm" accept="video/*,image/*" />
+                                    </div>
+                                    <button disabled={uploading} className="w-full bg-blue-600 py-5 rounded-[1.5rem] font-black text-lg disabled:opacity-30 flex items-center justify-center gap-3 transition-all active:scale-95 shadow-xl shadow-blue-600/20">
+                                        {uploading ? <div className="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin"></div> : <><i data-lucide="check-circle"></i> تأكيد وحفظ الدليل</>}
                                     </button>
                                 </form>
                             </div>
