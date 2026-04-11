@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>أرشيف الشكاوي والأدلة</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- React & Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
+        body { font-family: 'Cairo', sans-serif; background-color: #050505; color: white; overflow-x: hidden; }
+        .glass { background: rgba(17, 17, 17, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.05); }
+        .custom-scroll::-webkit-scrollbar { width: 5px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #2563eb; border-radius: 10px; }
+    </style>
+</head>
+<body class="custom-scroll">
+    <div id="root"></div>
+
+    <script type="module">
+        // Firebase Initialization via CDN Modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        window.firebaseModules = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc };
+    </script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+        const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc } = window.firebaseModules;
+
+        // --- ملاحظة لعبدالله: ضع بيانات الـ Firebase الخاصة بك هنا ---
+        const firebaseConfig = {
+            apiKey: "", // اتركها فارغة إذا كنت تستخدم بيئة التطوير الخاصة بنا
+            authDomain: "your-app.firebaseapp.com",
+            projectId: "your-project-id",
+            storageBucket: "your-app.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:123456789:web:abcdef"
+        };
+
+        // استخدام الـ Config المحقون تلقائياً في هذه البيئة
+        const finalConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : firebaseConfig;
+        const app = initializeApp(finalConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const systemAppId = typeof __app_id !== 'undefined' ? __app_id : 'abdullah-archive-v1';
+
+        function App() {
+            const [user, setUser] = useState(null);
+            const [complaints, setComplaints] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [isAdmin, setIsAdmin] = useState(false);
+            const [showAdminLogin, setShowAdminLogin] = useState(false);
+            const [adminKey, setAdminKey] = useState("");
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [uploading, setUploading] = useState(false);
+            
+            // بيانات Cloudinary الخاصة بك يا عبدالله
+            const cloudName = "dcgw0c0nv";
+            const uploadPreset = "Archive_Acc_1";
+
+            const [formData, setFormData] = useState({ title: "", desc: "", file: null, preview: null });
+
+            useEffect(() => {
+                signInAnonymously(auth).catch(console.error);
+                onAuthStateChanged(auth, setUser);
+                setTimeout(() => lucide.createIcons(), 500);
+            }, []);
+
+            useEffect(() => {
+                if (!user) return;
+                const complaintsRef = collection(db, 'artifacts', systemAppId, 'public', 'data', 'complaints');
+                return onSnapshot(complaintsRef, (snapshot) => {
+                    const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                    setComplaints(docs.sort((a,b) => b.at - a.at));
+                    setLoading(false);
+                    setTimeout(() => lucide.createIcons(), 100);
+                });
+            }, [user]);
+
+            const handleUpload = async (e) => {
+                e.preventDefault();
+                if (!formData.file || !formData.title) return;
+                setUploading(true);
+
+                try {
+                    const data = new FormData();
+                    data.append('file', formData.file);
+                    data.append('upload_preset', uploadPreset);
+
+                    const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/upload`, {
+                        method: 'POST', body: data
+                    });
+                    const resData = await res.json();
+
+                    if (!resData.secure_url) throw new Error();
+
+                    await addDoc(collection(db, 'artifacts', systemAppId, 'public', 'data', 'complaints'), {
+                        title: formData.title,
+                        desc: formData.desc,
+                        url: resData.secure_url,
+                        type: formData.file.type,
+                        at: Date.now(),
+                        user: user.uid
+                    });
+
+                    setFormData({ title: "", desc: "", file: null, preview: null });
+                    setIsModalOpen(false);
+                } catch (e) { alert("حدث خطأ في الرفع!"); }
+                setUploading(false);
+            };
+
+            return (
+                <div className="min-h-screen flex flex-col">
+                    {/* Header */}
+                    <header className="h-20 glass sticky top-0 z-50 px-6 flex items-center justify-between border-b border-white/5">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/30">
+                                <i data-lucide="shield-check" className="text-white"></i>
+                            </div>
+                            <h1 className="text-xl font-black hidden sm:block">أرشيف جيمي <span className="text-xs text-blue-500 mr-2">{isAdmin ? 'لوحة المسؤول' : 'إيداع الأدلة'}</span></h1>
+                        </div>
+                        <div className="flex gap-2">
+                            {!isAdmin ? (
+                                <button onClick={() => setShowAdminLogin(true)} className="p-2 text-slate-500 hover:text-white transition-colors">
+                                    <i data-lucide="lock"></i>
+                                </button>
+                            ) : (
+                                <button onClick={() => setIsAdmin(false)} className="p-2 text-red-500 hover:text-red-400">
+                                    <i data-lucide="log-out"></i>
+                                </button>
+                            )}
+                            <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 px-6 py-2 rounded-xl font-bold hover:bg-blue-500 transition-all shadow-lg flex items-center gap-2">
+                                <i data-lucide="plus" className="w-5 h-5"></i> <span className="hidden sm:inline">رفع دليل</span>
+                            </button>
+                        </div>
+                    </header>
+
+                    <main className="max-w-7xl mx-auto w-full px-6 py-10 flex-grow">
+                        {isAdmin ? (
+                            <>
+                                <div className="flex justify-between items-center mb-10">
+                                    <h2 className="text-2xl font-black">جميع الأدلة المرفوعة ({complaints.length})</h2>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                    {complaints.map(c => (
+                                        <div key={c.id} className="glass rounded-[2rem] overflow-hidden group hover:border-blue-500/30 transition-all">
+                                            <div className="aspect-video bg-black relative">
+                                                {c.type.includes('video') ? 
+                                                    <video src={c.url} controls className="w-full h-full object-cover" /> : 
+                                                    <img src={c.url} className="w-full h-full object-cover" />
+                                                }
+                                            </div>
+                                            <div className="p-6">
+                                                <h3 className="font-bold text-lg mb-1 truncate">{c.title}</h3>
+                                                <p className="text-[10px] text-slate-600 mb-3">{new Date(c.at).toLocaleString('ar-EG')}</p>
+                                                <p className="text-slate-400 text-sm mb-6 line-clamp-2 h-10">{c.desc || "لا يوجد وصف."}</p>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => { navigator.clipboard.writeText(c.url); alert('تم نسخ الرابط!'); }} className="flex-1 bg-blue-600/10 text-blue-400 py-3 rounded-xl text-xs font-bold hover:bg-blue-600 hover:text-white transition-all">
+                                                        نسخ للديسكورد
+                                                    </button>
+                                                    <button onClick={async () => { if(confirm('متأكد؟')) await deleteDoc(doc(db, 'artifacts', systemAppId, 'public', 'data', 'complaints', c.id)); }} className="p-3 bg-red-900/10 text-red-500 rounded-xl hover:bg-red-600 hover:text-white transition-all">
+                                                        <i data-lucide="trash-2" className="w-4 h-4"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </>
+                        ) : (
+                            <div className="max-w-2xl mx-auto py-20 text-center">
+                                <div className="w-24 h-24 bg-blue-600/5 rounded-full flex items-center justify-center mx-auto mb-8 text-blue-500 border border-blue-500/10">
+                                    <i data-lucide="upload-cloud" className="w-12 h-12"></i>
+                                </div>
+                                <h2 className="text-4xl font-black mb-6">نظام إيداع الأدلة والشكاوي</h2>
+                                <p className="text-slate-500 mb-10 text-lg leading-relaxed">
+                                    يا عبدالله، هذا النظام مخصص لرفع فيديوهات وصور الشكاوي. <br/>
+                                    بمجرد الرفع، سيتم تخزين الدليل برابط دائم في أرشيف الإدارة.
+                                </p>
+                                <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 px-12 py-5 rounded-[2rem] font-black text-xl shadow-2xl shadow-blue-600/20 active:scale-95 transition-all">
+                                    ابدأ الرفع الآن
+                                </button>
+                            </div>
+                        )}
+                    </main>
+
+                    {/* Footer */}
+                    <footer className="py-10 text-center text-slate-700 text-xs border-t border-white/5">
+                        نظام أرشيف عبدالله - جيمي 2026 ©
+                    </footer>
+
+                    {/* Modals */}
+                    {showAdminLogin && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md px-4">
+                            <div className="glass p-10 rounded-[2.5rem] w-full max-w-sm text-center">
+                                <i data-lucide="lock" className="mx-auto mb-4 text-blue-500"></i>
+                                <h2 className="text-xl font-bold mb-6">دخول المسؤول</h2>
+                                <input type="password" autoFocus className="w-full bg-white/5 rounded-2xl p-4 text-center text-2xl tracking-[0.5em] outline-none border border-white/5 focus:border-blue-600" placeholder="******" value={adminKey} onChange={e => setAdminKey(e.target.value)} />
+                                <button onClick={() => { if(adminKey === "123456") { setIsAdmin(true); setShowAdminLogin(false); setAdminKey(""); } else alert('الرمز خاطئ!') }} className="w-full bg-blue-600 py-4 rounded-2xl mt-4 font-bold">دخول</button>
+                                <button onClick={() => setShowAdminLogin(false)} className="mt-4 text-slate-500 text-sm">إلغاء</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {isModalOpen && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-4">
+                            <div className="glass p-8 rounded-[3rem] w-full max-w-xl relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/10 blur-[60px]"></div>
+                                <button onClick={() => setIsModalOpen(false)} className="absolute top-8 left-8 text-slate-500"><i data-lucide="x"></i></button>
+                                <h2 className="text-2xl font-black mb-8">رفع دليل جديد</h2>
+                                <form onSubmit={handleUpload} className="space-y-6">
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 mb-2 block mr-2">موضوع الشكوى</label>
+                                        <input required className="w-full bg-white/5 rounded-2xl p-4 outline-none border border-white/5 focus:border-blue-600" placeholder="مثال: سرقة سيارة - لاعب 12" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 mb-2 block mr-2">التفاصيل (اختياري)</label>
+                                        <textarea className="w-full bg-white/5 rounded-2xl p-4 outline-none border border-white/5 focus:border-blue-600 resize-none" placeholder="اكتب ملخص ما حدث..." rows="2" value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})}></textarea>
+                                    </div>
+                                    <label className="flex flex-col items-center justify-center w-full h-44 border-2 border-dashed border-white/10 rounded-[2rem] cursor-pointer hover:border-blue-600 hover:bg-blue-600/5 transition-all">
+                                        {!formData.preview ? 
+                                            <><i data-lucide="video" className="mb-2 text-slate-500"></i><span className="text-sm text-slate-500">اختر الملف (فيديو/صورة)</span></> : 
+                                            <p className="text-blue-500 font-bold animate-pulse">تم اختيار الملف!</p>
+                                        }
+                                        <input type="file" className="hidden" accept="video/*,image/*" onChange={e => {
+                                            const file = e.target.files[0];
+                                            if(file) setFormData({...formData, file, preview: URL.createObjectURL(file)});
+                                        }} />
+                                    </label>
+                                    <button disabled={uploading || !formData.file} className="w-full bg-blue-600 py-5 rounded-[1.5rem] font-black text-lg disabled:opacity-20 flex items-center justify-center gap-3">
+                                        {uploading ? <div className="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin"></div> : <><i data-lucide="shield-check"></i> تأكيد الإرسال</>}
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
