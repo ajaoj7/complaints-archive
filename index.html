@@ -6,7 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Marvel Archive System</title>
     
-    <!-- المكاتب الأساسية (تعمل مباشرة في المتصفح لـ Vercel) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -26,13 +25,11 @@
 <body>
     <div id="root"></div>
 
-    <!-- 1. إعدادات Firebase كـ Module مستقل -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // إعدادات قاعدة بياناتك الثابتة (لن تتعطل في Vercel)
         const firebaseConfig = {
             apiKey: "AIzaSyAY_d2xN4LttgidRoHpHa_jH1NZkYGxOHQ",
             authDomain: "complaints-archive.firebaseapp.com",
@@ -44,7 +41,6 @@
 
         const app = initializeApp(firebaseConfig);
         
-        // تصدير الوظائف للـ React
         window.fb = {
             auth: getAuth(app),
             db: getFirestore(app),
@@ -52,7 +48,6 @@
         };
     </script>
 
-    <!-- 2. كود الـ React (مترجم بواسطة Babel للمتصفح) -->
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
@@ -76,20 +71,14 @@
             const ADMIN_PASS = "123456";
             const APP_ID = "marvel-archive-system";
 
-            // تفعيل الأيقونات برمجياً لتتوافق مع Vercel
             useEffect(() => {
                 if (window.lucide) window.lucide.createIcons();
             });
 
-            // المصادقة
             useEffect(() => {
                 const initAuth = async () => {
-                    try { 
-                        // تسجيل دخول مجهول لـ Vercel
-                        await signInAnonymously(auth); 
-                    } catch (e) { 
-                        console.error("Auth Error:", e); 
-                    }
+                    try { await signInAnonymously(auth); } 
+                    catch (e) { console.error("Auth Error:", e); }
                 };
                 setTimeout(initAuth, 500); 
                 
@@ -97,7 +86,6 @@
                 return () => unsubscribe();
             }, []);
 
-            // جلب البيانات
             useEffect(() => {
                 if (!user) return;
                 const complaintsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'complaints');
@@ -112,9 +100,10 @@
 
             const showStatus = (type, msg) => {
                 setStatusNote({ type, msg });
-                if (type === 'success') setTimeout(() => setStatusNote(null), 5000);
+                if (type === 'success') setTimeout(() => setStatusNote(null), 6000);
             };
 
+            // المحرك الجديد الصلب للرفع والضغط
             const handleUpload = async (e) => {
                 e.preventDefault();
                 const file = e.target.elements.file.files[0];
@@ -122,54 +111,69 @@
                 const desc = e.target.elements.desc.value;
 
                 if (!file || !ticketNum || !user) return;
+                
                 setUploading(true);
                 setUploadProgress(0);
                 setStatusNote(null);
 
                 try {
-                    const xhr = new XMLHttpRequest();
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    formData.append('upload_preset', UPLOAD_PRESET);
+                    // 1. مرحلة الرفع إلى Cloudinary كـ Promise محمي
+                    const uploadToCloudinary = () => {
+                        return new Promise((resolve, reject) => {
+                            const xhr = new XMLHttpRequest();
+                            const formData = new FormData();
+                            formData.append('file', file);
+                            formData.append('upload_preset', UPLOAD_PRESET);
 
-                    xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`, true);
+                            xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`, true);
 
-                    xhr.upload.onprogress = (event) => {
-                        if (event.lengthComputable) {
-                            const percent = Math.round((event.loaded / event.total) * 100);
-                            setUploadProgress(percent);
-                        }
+                            xhr.upload.onprogress = (event) => {
+                                if (event.lengthComputable) {
+                                    const percent = Math.round((event.loaded / event.total) * 100);
+                                    setUploadProgress(percent);
+                                }
+                            };
+
+                            xhr.onload = () => {
+                                if (xhr.status === 200) {
+                                    resolve(JSON.parse(xhr.responseText));
+                                } else {
+                                    try {
+                                        const err = JSON.parse(xhr.responseText);
+                                        reject(new Error(err.error?.message || "فشل الرفع في السحابة"));
+                                    } catch(err) {
+                                        reject(new Error("حدث خطأ غير معروف في السحابة"));
+                                    }
+                                }
+                            };
+
+                            xhr.onerror = () => reject(new Error("حدث خطأ في الاتصال بالسحابة. تحقق من الإنترنت."));
+                            xhr.send(formData);
+                        });
                     };
 
-                    xhr.onload = async () => {
-                        if (xhr.status === 200) {
-                            const resJson = JSON.parse(xhr.responseText);
-                            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'complaints'), {
-                                title: `تذكرة: ${ticketNum}`,
-                                desc: desc || "لم يتم إدراج تفاصيل إضافية.",
-                                url: resJson.secure_url,
-                                type: file.type,
-                                at: Date.now(),
-                                size: (file.size / (1024 * 1024)).toFixed(2) + " MB",
-                                uid: user.uid
-                            });
-                            setIsModalOpen(false);
-                            showStatus('success', 'تم إيداع الدليل بنجاح في النظام المركزي.');
-                        } else {
-                            const errResponse = JSON.parse(xhr.responseText);
-                            showStatus('error', `فشل الرفع: ${errResponse.error?.message || 'تأكد من الحجم وإعدادات السحابة'}`);
-                        }
-                        setUploading(false);
-                    };
+                    const resJson = await uploadToCloudinary();
 
-                    xhr.onerror = () => {
-                        showStatus('error', 'حدث خطأ في الاتصال بالسحابة. تحقق من الإنترنت.');
-                        setUploading(false);
-                    };
+                    // 2. مرحلة الحفظ في Firebase
+                    await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'complaints'), {
+                        title: `تذكرة: ${ticketNum}`,
+                        desc: desc || "لم يتم إدراج تفاصيل إضافية.",
+                        url: resJson.secure_url,
+                        type: file.type,
+                        at: Date.now(),
+                        size: (file.size / (1024 * 1024)).toFixed(2) + " MB",
+                        uid: user.uid
+                    });
 
-                    xhr.send(formData);
-                } catch (e) {
-                    showStatus('error', 'حدث خطأ تقني غير متوقع.');
+                    // 3. نجاح العملية
+                    setIsModalOpen(false);
+                    showStatus('success', 'تم إيداع الدليل بنجاح في النظام المركزي.');
+
+                } catch (error) {
+                    console.error("Upload process failed:", error);
+                    showStatus('error', error.message || 'حدث خطأ تقني غير متوقع.');
+                } finally {
+                    // هذه الخطوة تضمن عدم بقاء التحميل معلقاً أبداً
                     setUploading(false);
                 }
             };
@@ -308,7 +312,6 @@
                         Marvel Archive System — Secured Military Grade Server
                     </footer>
 
-                    {/* مودال تسجيل دخول الإدارة */}
                     {showAdminLogin && (
                         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 px-4 backdrop-blur-3xl">
                             <div className="bg-[#0a0a0a] p-12 rounded-[3.5rem] w-full max-w-sm text-center border border-white/10 shadow-2xl relative overflow-hidden">
@@ -330,7 +333,6 @@
                         </div>
                     )}
 
-                    {/* مودال إيداع دليل جديد */}
                     {isModalOpen && (
                         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/98 p-4 backdrop-blur-2xl overflow-y-auto">
                             <div className="bg-[#0a0a0a] p-10 md:p-14 rounded-[4rem] w-full max-w-2xl relative border border-white/10 shadow-[0_0_100px_-20px_rgba(37,99,235,0.15)] my-auto">
