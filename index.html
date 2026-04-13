@@ -65,6 +65,9 @@
             const [searchTerm, setSearchTerm] = useState("");
             const [statusNote, setStatusNote] = useState(null);
             const [copiedId, setCopiedId] = useState(null);
+            
+            // حالة جديدة لتخزين النتيجة فور نجاح الرفع
+            const [uploadSuccessData, setUploadSuccessData] = useState(null);
 
             const CLOUD_NAME = "dcgw0c0nv";
             const UPLOAD_PRESET = "Archive_Acc_1";
@@ -103,7 +106,6 @@
                 if (type === 'success') setTimeout(() => setStatusNote(null), 6000);
             };
 
-            // المحرك الجديد الصلب للرفع والضغط
             const handleUpload = async (e) => {
                 e.preventDefault();
                 const file = e.target.elements.file.files[0];
@@ -115,9 +117,9 @@
                 setUploading(true);
                 setUploadProgress(0);
                 setStatusNote(null);
+                setUploadSuccessData(null); // تصفير بيانات النجاح السابقة
 
                 try {
-                    // 1. مرحلة الرفع إلى Cloudinary كـ Promise محمي
                     const uploadToCloudinary = () => {
                         return new Promise((resolve, reject) => {
                             const xhr = new XMLHttpRequest();
@@ -154,7 +156,11 @@
 
                     const resJson = await uploadToCloudinary();
 
-                    // 2. مرحلة الحفظ في Firebase
+                    if (!resJson.secure_url) {
+                        throw new Error("حدث خطأ في استخراج رابط الملف من السحابة.");
+                    }
+
+                    // الحفظ في قاعدة البيانات
                     await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'complaints'), {
                         title: `تذكرة: ${ticketNum}`,
                         desc: desc || "لم يتم إدراج تفاصيل إضافية.",
@@ -165,15 +171,17 @@
                         uid: user.uid
                     });
 
-                    // 3. نجاح العملية
-                    setIsModalOpen(false);
-                    showStatus('success', 'تم إيداع الدليل بنجاح في النظام المركزي.');
+                    // بدلاً من إغلاق النافذة، نعرض شاشة النجاح مع الرابط
+                    setUploadSuccessData({
+                        url: resJson.secure_url,
+                        ticket: ticketNum
+                    });
+                    showStatus('success', 'تم الإيداع بنجاح! انسخ الرابط أدناه.');
 
                 } catch (error) {
-                    console.error("Upload process failed:", error);
-                    showStatus('error', error.message || 'حدث خطأ تقني غير متوقع.');
+                    console.error("Upload error details:", error);
+                    showStatus('error', error.message || 'حدث خطأ تقني أثناء معالجة الملف.');
                 } finally {
-                    // هذه الخطوة تضمن عدم بقاء التحميل معلقاً أبداً
                     setUploading(false);
                 }
             };
@@ -182,15 +190,20 @@
                 return complaints.filter(c => c.title.toLowerCase().includes(searchTerm.toLowerCase()));
             }, [complaints, searchTerm]);
 
-            const copyToClipboard = (url, id) => {
+            const copyToClipboard = (text, id) => {
                 const el = document.createElement('textarea');
-                el.value = url;
+                el.value = text;
                 document.body.appendChild(el);
                 el.select();
                 document.execCommand('copy');
                 document.body.removeChild(el);
                 setCopiedId(id);
                 setTimeout(() => setCopiedId(null), 2000);
+            };
+
+            const closeUploadModal = () => {
+                setIsModalOpen(false);
+                setUploadSuccessData(null); // تصفير الرابط عند الإغلاق
             };
 
             return (
@@ -294,7 +307,7 @@
                                 </h2>
                                 <p className="text-slate-500 mb-14 text-xl leading-relaxed font-medium max-w-xl">
                                     النظام المركزي الموحد لإيداع الأدلة الرقمية والشكاوي. 
-                                    يتم معالجة وتوثيق الملفات المرفوعة تلقائياً في السجل السحابي.
+                                    يتم حفظ الملفات المرفوعة بأمان في السجل السحابي للإدارة.
                                 </p>
                                 <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">
                                     <button onClick={() => { setStatusNote(null); setIsModalOpen(true); }} className="bg-blue-600 px-12 py-6 rounded-[2.5rem] font-black text-2xl shadow-2xl active:scale-95 transition-all shadow-blue-600/30 border border-blue-400/20">
@@ -336,11 +349,13 @@
                     {isModalOpen && (
                         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/98 p-4 backdrop-blur-2xl overflow-y-auto">
                             <div className="bg-[#0a0a0a] p-10 md:p-14 rounded-[4rem] w-full max-w-2xl relative border border-white/10 shadow-[0_0_100px_-20px_rgba(37,99,235,0.15)] my-auto">
-                                <button onClick={() => !uploading && setIsModalOpen(false)} className="absolute top-10 left-10 text-slate-600 hover:text-white transition-colors p-2">
+                                <button onClick={closeUploadModal} className="absolute top-10 left-10 text-slate-600 hover:text-white transition-colors p-2">
                                     <i data-lucide="x" className="w-8 h-8"></i>
                                 </button>
                                 
-                                <h2 className="text-4xl font-black mb-12 tracking-tight text-right uppercase border-r-4 border-blue-600 pr-6">إيداع دليل جديد</h2>
+                                <h2 className="text-4xl font-black mb-12 tracking-tight text-right uppercase border-r-4 border-blue-600 pr-6">
+                                    {uploadSuccessData ? "اكتمل الإيداع" : "إيداع دليل جديد"}
+                                </h2>
                                 
                                 {statusNote && (
                                     <div className={`mb-10 p-6 rounded-[2rem] flex items-center gap-4 border ${statusNote.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-green-500/10 border-green-500/20 text-green-400'}`}>
@@ -349,72 +364,101 @@
                                     </div>
                                 )}
 
-                                <form onSubmit={handleUpload} className="space-y-10 text-right">
-                                    <div className="space-y-4">
-                                        <label className="text-[11px] text-slate-500 mr-2 uppercase font-black tracking-[0.2em] block">رقم التذكرة <span className="text-red-500">*</span></label>
-                                        <input 
-                                            name="ticket" required 
-                                            className="w-full bg-white/[0.03] rounded-[1.8rem] p-6 outline-none border border-white/5 focus:border-blue-600 focus:ring-4 focus:ring-blue-600/5 text-white text-lg font-bold transition-all shadow-inner" 
-                                            placeholder="أدخل رقم تذكرة الشكوى هنا" 
-                                        />
-                                    </div>
-
-                                    <div className="space-y-4">
-                                        <label className="text-[11px] text-slate-500 mr-2 uppercase font-black tracking-[0.2em] block">تفاصيل إضافية (اختياري)</label>
-                                        <textarea 
-                                            name="desc" 
-                                            className="w-full bg-white/[0.03] rounded-[1.8rem] p-6 outline-none border border-white/5 focus:border-blue-600 focus:ring-4 focus:ring-blue-600/5 resize-none text-white leading-relaxed font-medium transition-all shadow-inner" 
-                                            placeholder="أضف وصفاً مختصراً للحدث..." 
-                                            rows="3"
-                                        ></textarea>
-                                    </div>
-
-                                    <div className="space-y-4">
-                                        <label className="text-[11px] text-slate-500 mr-2 uppercase font-black tracking-[0.2em] block">الملف الرقمي <span className="text-red-500">*</span></label>
-                                        <div className="relative group">
-                                            <input 
-                                                name="file" type="file" required 
-                                                className="w-full bg-white/[0.02] rounded-[1.8rem] p-10 border-2 border-dashed border-white/10 text-slate-500 text-sm cursor-pointer group-hover:border-blue-600/50 group-hover:bg-blue-600/[0.02] transition-all file:hidden text-center relative z-10 opacity-0" 
-                                                accept="video/*,image/*" 
-                                                onChange={(e) => {
-                                                    if(e.target.files[0]) {
-                                                        const label = e.target.parentElement.querySelector('.file-label');
-                                                        label.innerHTML = `<span class="text-blue-400 font-bold">تم اختيار: ${e.target.files[0].name}</span>`;
-                                                    }
-                                                }}
-                                            />
-                                            <div className="file-label absolute inset-0 flex flex-col items-center justify-center pointer-events-none transition-colors border-2 border-dashed border-white/10 rounded-[1.8rem] group-hover:border-blue-600/50 group-hover:bg-blue-600/[0.02]">
-                                                <i data-lucide="upload-cloud" className="w-10 h-10 mb-2 opacity-20 group-hover:opacity-100 group-hover:text-blue-500 transition-all block"></i>
-                                                <span className="font-bold">اسحب الملف هنا أو اضغط للاختيار</span>
+                                {/* شاشة النجاح وإظهار الرابط (تظهر فقط بعد نجاح الرفع) */}
+                                {uploadSuccessData ? (
+                                    <div className="space-y-8 animate-in fade-in zoom-in duration-500">
+                                        <div className="bg-white/[0.02] border border-white/5 rounded-[2rem] p-8 text-center">
+                                            <div className="w-20 h-20 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                                                <i data-lucide="check" className="w-10 h-10"></i>
                                             </div>
+                                            <h3 className="text-2xl font-black mb-2">تم حفظ تذكرة: {uploadSuccessData.ticket}</h3>
+                                            <p className="text-slate-400 mb-8">تم أرشفة الملف بنجاح وهو الآن متاح للإدارة.</p>
+                                            
+                                            <div className="bg-black/50 p-4 rounded-xl flex items-center justify-between border border-white/5 mb-6">
+                                                <span className="text-xs text-slate-500 truncate w-3/4 text-left font-mono" dir="ltr">{uploadSuccessData.url}</span>
+                                                <button 
+                                                    onClick={() => copyToClipboard(uploadSuccessData.url, 'success-copy')} 
+                                                    className={`px-4 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${copiedId === 'success-copy' ? 'bg-green-600 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}
+                                                >
+                                                    <i data-lucide={copiedId === 'success-copy' ? 'check' : 'copy'} className="w-4 h-4"></i>
+                                                    {copiedId === 'success-copy' ? 'تم النسخ' : 'نسخ الرابط'}
+                                                </button>
+                                            </div>
+                                            
+                                            <button onClick={closeUploadModal} className="w-full bg-white/5 hover:bg-white/10 py-4 rounded-2xl font-bold transition-all">
+                                                إغلاق النافذة
+                                            </button>
                                         </div>
                                     </div>
-
-                                    {uploading && (
+                                ) : (
+                                    /* نموذج الرفع المعتاد */
+                                    <form onSubmit={handleUpload} className="space-y-10 text-right animate-in fade-in duration-500">
                                         <div className="space-y-4">
-                                            <div className="flex justify-between text-[11px] font-black uppercase tracking-[0.2em] text-blue-500">
-                                                <span>{uploadProgress < 100 ? "جاري نقل البيانات إلى السحابة..." : "جاري المعالجة والضغط النهائي..."}</span>
-                                                <span>{uploadProgress}%</span>
-                                            </div>
-                                            <div className="w-full bg-white/5 h-5 rounded-full overflow-hidden p-1.5 border border-white/10 shadow-inner relative">
-                                                <div className="bg-gradient-to-l from-blue-600 to-indigo-600 h-full rounded-full transition-all duration-300 relative overflow-hidden" style={{width: `${uploadProgress}%`}}>
-                                                    <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.2)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.2)_50%,rgba(255,255,255,0.2)_75%,transparent_75%,transparent)] bg-[length:20px_20px]" style={{animation: "progress-shimmer 1s linear infinite"}}></div>
+                                            <label className="text-[11px] text-slate-500 mr-2 uppercase font-black tracking-[0.2em] block">رقم التذكرة <span className="text-red-500">*</span></label>
+                                            <input 
+                                                name="ticket" required 
+                                                className="w-full bg-white/[0.03] rounded-[1.8rem] p-6 outline-none border border-white/5 focus:border-blue-600 focus:ring-4 focus:ring-blue-600/5 text-white text-lg font-bold transition-all shadow-inner" 
+                                                placeholder="أدخل رقم تذكرة الشكوى هنا" 
+                                            />
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <label className="text-[11px] text-slate-500 mr-2 uppercase font-black tracking-[0.2em] block">تفاصيل إضافية (اختياري)</label>
+                                            <textarea 
+                                                name="desc" 
+                                                className="w-full bg-white/[0.03] rounded-[1.8rem] p-6 outline-none border border-white/5 focus:border-blue-600 focus:ring-4 focus:ring-blue-600/5 resize-none text-white leading-relaxed font-medium transition-all shadow-inner" 
+                                                placeholder="أضف وصفاً مختصراً للحدث..." 
+                                                rows="3"
+                                            ></textarea>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <label className="text-[11px] text-slate-500 mr-2 uppercase font-black tracking-[0.2em] block">الملف الرقمي <span className="text-red-500">*</span></label>
+                                            <div className="relative group">
+                                                <input 
+                                                    name="file" type="file" required 
+                                                    className="w-full bg-white/[0.02] rounded-[1.8rem] p-10 border-2 border-dashed border-white/10 text-slate-500 text-sm cursor-pointer group-hover:border-blue-600/50 group-hover:bg-blue-600/[0.02] transition-all file:hidden text-center relative z-10 opacity-0" 
+                                                    accept="video/*,image/*" 
+                                                    onChange={(e) => {
+                                                        if(e.target.files[0]) {
+                                                            const label = e.target.parentElement.querySelector('.file-label');
+                                                            label.innerHTML = `<span class="text-blue-400 font-bold">تم اختيار: ${e.target.files[0].name}</span>`;
+                                                        }
+                                                    }}
+                                                />
+                                                <div className="file-label absolute inset-0 flex flex-col items-center justify-center pointer-events-none transition-colors border-2 border-dashed border-white/10 rounded-[1.8rem] group-hover:border-blue-600/50 group-hover:bg-blue-600/[0.02]">
+                                                    <i data-lucide="upload-cloud" className="w-10 h-10 mb-2 opacity-20 group-hover:opacity-100 group-hover:text-blue-500 transition-all block"></i>
+                                                    <span className="font-bold">اسحب الملف هنا أو اضغط للاختيار</span>
                                                 </div>
                                             </div>
                                         </div>
-                                    )}
 
-                                    <button disabled={uploading} className="w-full bg-blue-600 py-7 rounded-[2.5rem] font-black text-2xl disabled:opacity-30 flex items-center justify-center gap-5 transition-all active:scale-[0.98] shadow-2xl shadow-blue-600/30 border border-blue-400/20 group">
-                                        {uploading ? (
-                                            <i data-lucide="loader-2" className="w-10 h-10 animate-spin text-white block"></i>
-                                        ) : (
-                                            <>
-                                                <i data-lucide="check-circle" className="w-8 h-8 group-hover:scale-125 transition-transform block"></i> 
-                                                <span>تأكيد الحفظ في الأرشيف</span>
-                                            </>
+                                        {uploading && (
+                                            <div className="space-y-4">
+                                                <div className="flex justify-between text-[11px] font-black uppercase tracking-[0.2em] text-blue-500">
+                                                    <span>{uploadProgress < 100 ? "جاري نقل البيانات إلى السحابة..." : "جاري حفظ الدليل..."}</span>
+                                                    <span>{uploadProgress}%</span>
+                                                </div>
+                                                <div className="w-full bg-white/5 h-5 rounded-full overflow-hidden p-1.5 border border-white/10 shadow-inner relative">
+                                                    <div className="bg-gradient-to-l from-blue-600 to-indigo-600 h-full rounded-full transition-all duration-300 relative overflow-hidden" style={{width: `${uploadProgress}%`}}>
+                                                        <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.2)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.2)_50%,rgba(255,255,255,0.2)_75%,transparent_75%,transparent)] bg-[length:20px_20px]" style={{animation: "progress-shimmer 1s linear infinite"}}></div>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         )}
-                                    </button>
-                                </form>
+
+                                        <button disabled={uploading} className="w-full bg-blue-600 py-7 rounded-[2.5rem] font-black text-2xl disabled:opacity-30 flex items-center justify-center gap-5 transition-all active:scale-[0.98] shadow-2xl shadow-blue-600/30 border border-blue-400/20 group">
+                                            {uploading ? (
+                                                <i data-lucide="loader-2" className="w-10 h-10 animate-spin text-white block"></i>
+                                            ) : (
+                                                <>
+                                                    <i data-lucide="upload" className="w-8 h-8 group-hover:-translate-y-1 transition-transform block"></i> 
+                                                    <span>رفع وحفظ الدليل</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </form>
+                                )}
                             </div>
                         </div>
                     )}
