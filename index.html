@@ -3,8 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Marvel Archive System</title>
     
+    <title>Marvel Archive System</title>
+    <meta name="description" content="النظام المركزي الموحد لإيداع وحفظ الأدلة الرقمية والشكاوي.">
+    <meta property="og:title" content="Marvel Archive System">
+    <meta property="og:description" content="النظام المركزي الموحد لإيداع وحفظ الأدلة الرقمية والشكاوي.">
+    <meta property="og:type" content="website">
+    <meta name="theme-color" content="#2563eb"> <meta property="og:image" content="https://images.unsplash.com/photo-1614064641913-6b70fea0cef6?q=80&w=1200&auto=format&fit=crop"> 
+    <meta name="twitter:card" content="summary_large_image">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -65,7 +72,6 @@
             const [statusNote, setStatusNote] = useState(null);
             const [copiedId, setCopiedId] = useState(null);
             
-            // حالة جديدة لتخزين النتيجة فور نجاح الرفع
             const [uploadSuccessData, setUploadSuccessData] = useState(null);
 
             const CLOUD_NAME = "dcgw0c0nv";
@@ -116,7 +122,7 @@
                 setUploading(true);
                 setUploadProgress(0);
                 setStatusNote(null);
-                setUploadSuccessData(null); // تصفير بيانات النجاح السابقة
+                setUploadSuccessData(null); 
 
                 try {
                     const uploadToCloudinary = () => {
@@ -159,7 +165,6 @@
                         throw new Error("حدث خطأ في استخراج رابط الملف من السحابة.");
                     }
 
-                    // الحفظ في قاعدة البيانات
                     await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'complaints'), {
                         title: `تذكرة: ${ticketNum}`,
                         desc: desc || "لم يتم إدراج تفاصيل إضافية.",
@@ -170,7 +175,6 @@
                         uid: user.uid
                     });
 
-                    // بدلاً من إغلاق النافذة، نعرض شاشة النجاح مع الرابط
                     setUploadSuccessData({
                         url: resJson.secure_url,
                         ticket: ticketNum
@@ -202,7 +206,7 @@
 
             const closeUploadModal = () => {
                 setIsModalOpen(false);
-                setUploadSuccessData(null); // تصفير الرابط عند الإغلاق
+                setUploadSuccessData(null); 
             };
 
             return (
@@ -363,7 +367,6 @@
                                     </div>
                                 )}
 
-                                {/* شاشة النجاح وإظهار الرابط (تظهر فقط بعد نجاح الرفع) */}
                                 {uploadSuccessData ? (
                                     <div className="space-y-8 animate-in fade-in zoom-in duration-500">
                                         <div className="bg-white/[0.02] border border-white/5 rounded-[2rem] p-8 text-center">
@@ -390,7 +393,6 @@
                                         </div>
                                     </div>
                                 ) : (
-                                    /* نموذج الرفع المعتاد */
                                     <form onSubmit={handleUpload} className="space-y-10 text-right animate-in fade-in duration-500">
                                         <div className="space-y-4">
                                             <label className="text-[11px] text-slate-500 mr-2 uppercase font-black tracking-[0.2em] block">رقم التذكرة <span className="text-red-500">*</span></label>
@@ -470,6 +472,3 @@
     </script>
 </body>
 </html>
-
-
-```
