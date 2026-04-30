@@ -129,51 +129,39 @@
                 setUploadSuccessData(null); 
 
                 try {
-                    // محرك الرفع المجزأ (Chunked Upload) لمنع انقطاع الاتصال
-                    const uploadToCloudinary = async () => {
-                        const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`;
-                        const chunkSize = 10 * 1024 * 1024; // تقطيع الفيديو لـ 10 ميجا لكل جزء
-                        const uniqueUploadId = "upl_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
-                        let secure_url = null;
-
-                        for (let start = 0; start < file.size; start += chunkSize) {
-                            const end = Math.min(start + chunkSize, file.size);
-                            const chunk = file.slice(start, end);
+                    // العودة لنظام الرفع السريع والمباشر (Single Stream)
+                    const uploadToCloudinary = () => {
+                        return new Promise((resolve, reject) => {
+                            const xhr = new XMLHttpRequest();
                             const formData = new FormData();
-                            formData.append('file', chunk);
+                            formData.append('file', file);
                             formData.append('upload_preset', UPLOAD_PRESET);
 
-                            const chunkResult = await new Promise((resolve, reject) => {
-                                const xhr = new XMLHttpRequest();
-                                xhr.open('POST', url, true);
-                                xhr.setRequestHeader('X-Unique-Upload-Id', uniqueUploadId);
-                                xhr.setRequestHeader('Content-Range', `bytes ${start}-${end - 1}/${file.size}`);
-                                
-                                xhr.upload.onprogress = (e) => {
-                                    if (e.lengthComputable) {
-                                        const loaded = start + e.loaded;
-                                        setUploadProgress(Math.round((loaded / file.size) * 100));
+                            xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`, true);
+
+                            xhr.upload.onprogress = (event) => {
+                                if (event.lengthComputable) {
+                                    const percent = Math.round((event.loaded / event.total) * 100);
+                                    setUploadProgress(percent);
+                                }
+                            };
+
+                            xhr.onload = () => {
+                                if (xhr.status === 200) {
+                                    resolve(JSON.parse(xhr.responseText));
+                                } else {
+                                    try {
+                                        const err = JSON.parse(xhr.responseText);
+                                        reject(new Error(err.error?.message || "فشل الرفع في السحابة"));
+                                    } catch(err) {
+                                        reject(new Error("حدث خطأ غير معروف في السحابة"));
                                     }
-                                };
-                                
-                                xhr.onload = () => {
-                                    if (xhr.status >= 200 && xhr.status < 300) {
-                                        resolve(JSON.parse(xhr.responseText));
-                                    } else {
-                                        reject(new Error("حدث خطأ من جهة السيرفر أثناء رفع أحد الأجزاء."));
-                                    }
-                                };
-                                
-                                xhr.onerror = () => reject(new Error("انقطع الاتصال بالإنترنت أثناء الرفع. يرجى المحاولة مرة أخرى."));
-                                xhr.send(formData);
-                            });
-                            
-                            if (chunkResult && chunkResult.secure_url) {
-                                secure_url = chunkResult.secure_url;
-                            }
-                        }
-                        
-                        return { secure_url };
+                                }
+                            };
+
+                            xhr.onerror = () => reject(new Error("حدث خطأ في الاتصال بالسحابة. تحقق من الإنترنت."));
+                            xhr.send(formData);
+                        });
                     };
 
                     const resJson = await uploadToCloudinary();
