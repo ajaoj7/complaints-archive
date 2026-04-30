@@ -73,15 +73,11 @@
             
             const [uploadSuccessData, setUploadSuccessData] = useState(null);
 
-            // ==========================================
-            // إعدادات الروابط (السحابة والويبهوك)
-            // ==========================================
             const CLOUD_NAME = "dcgw0c0nv";
             const UPLOAD_PRESET = "Archive_Acc_1";
             const ADMIN_PASS = "123456";
             const APP_ID = "marvel-archive-system";
             
-            // رابط الويبهوك المباشر الخاص بك
             const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1499333079246966894/KwofaiLx28gjv9wnZUP8uRCkrtxNPi8a91xxH_0EjKVX95b1vlnh8lrF7IxxudB4gjYx"; 
 
             useEffect(() => {
@@ -123,9 +119,9 @@
                 const complainer = e.target.elements.complainer.value;
                 const complainedAgainst = e.target.elements.complainedAgainst.value;
                 const reason = e.target.elements.reason.value;
-                const punishment = e.target.elements.punishment.value || "لا يوجد";
+                const punishment = e.target.elements.punishment.value;
 
-                if (!file || !complainer || !complainedAgainst || !reason || !user) return;
+                if (!file || !complainer || !complainedAgainst || !reason || !punishment || !user) return;
                 
                 setUploading(true);
                 setUploadProgress(0);
@@ -133,42 +129,59 @@
                 setUploadSuccessData(null); 
 
                 try {
-                    const uploadToCloudinary = () => {
-                        return new Promise((resolve, reject) => {
-                            const xhr = new XMLHttpRequest();
+                    // محرك الرفع المجزأ (Chunked Upload) لمنع انقطاع الاتصال
+                    const uploadToCloudinary = async () => {
+                        const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`;
+                        const chunkSize = 10 * 1024 * 1024; // تقطيع الفيديو لـ 10 ميجا لكل جزء
+                        const uniqueUploadId = "upl_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
+                        let secure_url = null;
+
+                        for (let start = 0; start < file.size; start += chunkSize) {
+                            const end = Math.min(start + chunkSize, file.size);
+                            const chunk = file.slice(start, end);
                             const formData = new FormData();
-                            formData.append('file', file);
+                            formData.append('file', chunk);
                             formData.append('upload_preset', UPLOAD_PRESET);
 
-                            xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`, true);
-
-                            xhr.upload.onprogress = (event) => {
-                                if (event.lengthComputable) {
-                                    const percent = Math.round((event.loaded / event.total) * 100);
-                                    setUploadProgress(percent);
-                                }
-                            };
-
-                            xhr.onload = () => {
-                                if (xhr.status === 200) {
-                                    resolve(JSON.parse(xhr.responseText));
-                                } else {
-                                    reject(new Error("فشل الرفع في السحابة"));
-                                }
-                            };
-
-                            xhr.onerror = () => reject(new Error("حدث خطأ في الاتصال بالسحابة. تحقق من الإنترنت."));
-                            xhr.send(formData);
-                        });
+                            const chunkResult = await new Promise((resolve, reject) => {
+                                const xhr = new XMLHttpRequest();
+                                xhr.open('POST', url, true);
+                                xhr.setRequestHeader('X-Unique-Upload-Id', uniqueUploadId);
+                                xhr.setRequestHeader('Content-Range', `bytes ${start}-${end - 1}/${file.size}`);
+                                
+                                xhr.upload.onprogress = (e) => {
+                                    if (e.lengthComputable) {
+                                        const loaded = start + e.loaded;
+                                        setUploadProgress(Math.round((loaded / file.size) * 100));
+                                    }
+                                };
+                                
+                                xhr.onload = () => {
+                                    if (xhr.status >= 200 && xhr.status < 300) {
+                                        resolve(JSON.parse(xhr.responseText));
+                                    } else {
+                                        reject(new Error("حدث خطأ من جهة السيرفر أثناء رفع أحد الأجزاء."));
+                                    }
+                                };
+                                
+                                xhr.onerror = () => reject(new Error("انقطع الاتصال بالإنترنت أثناء الرفع. يرجى المحاولة مرة أخرى."));
+                                xhr.send(formData);
+                            });
+                            
+                            if (chunkResult && chunkResult.secure_url) {
+                                secure_url = chunkResult.secure_url;
+                            }
+                        }
+                        
+                        return { secure_url };
                     };
 
                     const resJson = await uploadToCloudinary();
 
-                    if (!resJson.secure_url) {
+                    if (!resJson || !resJson.secure_url) {
                         throw new Error("حدث خطأ في استخراج رابط الملف من السحابة.");
                     }
 
-                    // إرسال البيانات للديسكورد (بدون منشن ومع توقيع Majaz)
                     if(DISCORD_WEBHOOK_URL) {
                         const discordMessage = `السلام عليكم ورحمة الله وبركاته
 أسعد الله أوقاتكم بكل خير..
@@ -351,7 +364,6 @@
                         )}
                     </main>
 
-                    {/* الفوتر مع إضافة العلامة التجارية */}
                     <footer className="py-12 flex flex-col items-center justify-center gap-3 border-t border-white/5 mt-auto">
                         <div className="text-slate-800 text-[11px] font-black tracking-[0.5em] uppercase text-center">
                             Marvel Archive System — Secured Administrative Server
@@ -422,11 +434,11 @@
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             <div className="space-y-3">
                                                 <label className="text-[11px] text-slate-500 mr-2 font-bold tracking-wider block">1- المشتكي <span className="text-red-500">*</span></label>
-                                                <input name="complainer" required className="w-full bg-white/[0.03] rounded-2xl p-4 outline-none border border-white/5 focus:border-blue-600 text-white text-sm transition-all" placeholder="اسمك أو الآيدي" />
+                                                <input name="complainer" required className="w-full bg-white/[0.03] rounded-2xl p-4 outline-none border border-white/5 focus:border-blue-600 text-white text-sm transition-all" placeholder="آيدي المشتكي" />
                                             </div>
                                             <div className="space-y-3">
                                                 <label className="text-[11px] text-slate-500 mr-2 font-bold tracking-wider block">2- المشتكي عليه <span className="text-red-500">*</span></label>
-                                                <input name="complainedAgainst" required className="w-full bg-white/[0.03] rounded-2xl p-4 outline-none border border-white/5 focus:border-blue-600 text-white text-sm transition-all" placeholder="الطرف الآخر" />
+                                                <input name="complainedAgainst" required className="w-full bg-white/[0.03] rounded-2xl p-4 outline-none border border-white/5 focus:border-blue-600 text-white text-sm transition-all" placeholder="آيدي المشتكي عليه" />
                                             </div>
                                         </div>
 
@@ -436,8 +448,8 @@
                                         </div>
 
                                         <div className="space-y-3">
-                                            <label className="text-[11px] text-slate-500 mr-2 font-bold tracking-wider block">4- المحاسبة (إن كان يوجد)</label>
-                                            <input name="punishment" className="w-full bg-white/[0.03] rounded-2xl p-4 outline-none border border-white/5 focus:border-blue-600 text-white text-sm transition-all" placeholder="مثال: باند، إنذار (اختياري)" />
+                                            <label className="text-[11px] text-slate-500 mr-2 font-bold tracking-wider block">4- المحاسبة <span className="text-red-500">*</span></label>
+                                            <input name="punishment" required className="w-full bg-white/[0.03] rounded-2xl p-4 outline-none border border-white/5 focus:border-blue-600 text-white text-sm transition-all" placeholder="تحذير إداري أو باند، وإن لم يوجد اكتب (لا يوجد) مع السبب" />
                                         </div>
 
                                         <div className="space-y-3 pt-4 border-t border-white/5">
